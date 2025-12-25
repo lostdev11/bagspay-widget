@@ -9,6 +9,11 @@ interface QRCodeBlockProps {
 
 export default function QRCodeBlock({ url, size = 200 }: QRCodeBlockProps) {
   const [copied, setCopied] = useState(false)
+  const [imageError, setImageError] = useState(false)
+
+  // Check if URL is localhost
+  const isLocalhost = typeof window !== 'undefined' && 
+    (url.includes('localhost') || url.includes('127.0.0.1') || url.includes('0.0.0.0'))
 
   // Use external QR code service (no dependencies needed)
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(url)}`
@@ -30,15 +35,30 @@ export default function QRCodeBlock({ url, size = 200 }: QRCodeBlockProps) {
           Shareable Checkout Link
         </h3>
         
+        {isLocalhost && (
+          <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              ⚠️ Localhost URLs won't work when scanned from other devices. Use your network IP or deploy to test QR codes.
+            </p>
+          </div>
+        )}
+
         <div className="flex justify-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={qrCodeUrl}
-            alt="QR Code"
-            className="border-4 border-gray-100 dark:border-gray-700 rounded-lg"
-            width={size}
-            height={size}
-          />
+          {imageError ? (
+            <div className="w-[200px] h-[200px] border-4 border-gray-200 dark:border-gray-700 rounded-lg flex items-center justify-center bg-gray-50 dark:bg-gray-700">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Failed to load QR code</p>
+            </div>
+          ) : (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={qrCodeUrl}
+              alt="QR Code"
+              className="border-4 border-gray-100 dark:border-gray-700 rounded-lg"
+              width={size}
+              height={size}
+              onError={() => setImageError(true)}
+            />
+          )}
         </div>
 
         <div className="space-y-2">

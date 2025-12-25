@@ -1,11 +1,63 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getQuote, executePayment, getTokens } from '../lib/mockBagsApi'
+import { mockGetQuote, executePayment, getTokens } from '../lib/mockBagsApi'
 import { resolveAddress, isValidSolDomain } from '../lib/sns'
 import type { BagsPayWidgetProps, BagsToken, QuoteResponse } from '../lib/types'
 
 type WidgetState = 'idle' | 'quoting' | 'confirm' | 'processing' | 'success' | 'error'
+
+// Check if live API is configured
+const BAGS_API_BASE = process.env.NEXT_PUBLIC_BAGS_API_BASE_URL
+const USE_MOCK = !BAGS_API_BASE
+
+// Token mint addresses for mapping currency to outToken
+const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+const SOL_MINT = 'So11111111111111111111111111111111111111112'
+
+/**
+ * Get quote using mock or real API based on configuration
+ */
+async function getQuote(params: {
+  tokenIn: string;
+  amount: number;
+  currency: 'USDC' | 'SOL';
+}): Promise<QuoteResponse> {
+  if (USE_MOCK) {
+    return await mockGetQuote(params)
+  } else {
+    try {
+      // Map currency to outToken address
+      const outToken = params.currency === 'USDC' ? USDC_MINT : SOL_MINT
+      
+      // Fetch quote from API via proxy route
+      const response = await fetch('/api/bags/quote', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tokenIn: params.tokenIn,
+          amount: params.amount,
+          outToken,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `Failed to get quote: ${response.statusText}`)
+      }
+
+      const quote = await response.json()
+      // Type assertion - real API should return QuoteResponse compatible structure
+      return quote as QuoteResponse
+    } catch (error) {
+      console.error('Error fetching quote from API, falling back to mock:', error)
+      // Fallback to mock on error
+      return await mockGetQuote(params)
+    }
+  }
+}
 
 export default function CheckoutWidget({
   merchant,
@@ -47,13 +99,56 @@ export default function CheckoutWidget({
     resolveMerchant()
   }, [merchant, onError])
 
-  // Load tokens
+  // Load tokens from API or mock
   useEffect(() => {
-    const tokens = getTokens()
-    setTokens(tokens)
-    if (tokens.length > 0) {
-      setSelectedToken(tokens[0])
+    const loadTokens = async () => {
+      if (USE_MOCK) {
+        // Use mock tokens
+        const mockTokens = getTokens()
+        setTokens(mockTokens)
+        if (mockTokens.length > 0) {
+          setSelectedToken(mockTokens[0])
+        }
+      } else {
+        // Fetch tokens from live API via proxy route
+        try {
+          const response = await fetch('/api/bags/tokens', {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          })
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch tokens: ${response.statusText}`)
+          }
+          
+          const data = await response.json()
+          const apiTokens: BagsToken[] = data.tokens || []
+          
+          if (apiTokens.length > 0) {
+            setTokens(apiTokens)
+            setSelectedToken(apiTokens[0])
+          } else {
+            // Fallback to mock if API returns no tokens
+            const mockTokens = getTokens()
+            setTokens(mockTokens)
+            if (mockTokens.length > 0) {
+              setSelectedToken(mockTokens[0])
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching tokens from API, falling back to mock:', error)
+          // Fallback to mock tokens on error
+          const mockTokens = getTokens()
+          setTokens(mockTokens)
+          if (mockTokens.length > 0) {
+            setSelectedToken(mockTokens[0])
+          }
+        }
+      }
     }
+    
+    loadTokens()
   }, [])
 
   // Auto-quote when token is selected

@@ -62,7 +62,7 @@ const MOCK_PRICES: Record<string, number> = {
  * @param params - Quote parameters
  * @returns Mock quote response
  */
-export async function getQuote(params: {
+export async function mockGetQuote(params: {
   tokenIn: string;
   amount: number;
   currency: 'USDC' | 'SOL';
@@ -102,6 +102,9 @@ export async function getQuote(params: {
     fee,
   };
 }
+
+// Export as getQuote for backward compatibility
+export const getQuote = mockGetQuote;
 
 /**
  * Executes a payment via Bags API (MOCK)

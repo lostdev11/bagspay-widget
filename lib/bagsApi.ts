@@ -53,7 +53,12 @@ export class BagsAPI {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/v1/tokens`, {
+      // Construct full URL - if base URL already includes /api/v1, use it as-is, otherwise append
+      const apiUrl = this.baseUrl.includes('/api/v1') 
+        ? `${this.baseUrl}/tokens`
+        : `${this.baseUrl}/api/v1/tokens`
+      
+      const response = await fetch(apiUrl, {
         headers: this.getHeaders(),
       });
       
@@ -82,7 +87,12 @@ export class BagsAPI {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/v1/tokens/${tokenAddress}/price`, {
+      // Construct full URL - if base URL already includes /api/v1, use it as-is, otherwise append
+      const apiUrl = this.baseUrl.includes('/api/v1') 
+        ? `${this.baseUrl}/tokens/${tokenAddress}/price`
+        : `${this.baseUrl}/api/v1/tokens/${tokenAddress}/price`
+      
+      const response = await fetch(apiUrl, {
         headers: this.getHeaders(),
       });
       
@@ -116,7 +126,12 @@ export class BagsAPI {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/v1/payments`, {
+      // Construct full URL - if base URL already includes /api/v1, use it as-is, otherwise append
+      const apiUrl = this.baseUrl.includes('/api/v1') 
+        ? `${this.baseUrl}/payments`
+        : `${this.baseUrl}/api/v1/payments`
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           ...this.getHeaders(),
@@ -146,7 +161,12 @@ export class BagsAPI {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/v1/payments/${paymentId}/verify`, {
+      // Construct full URL - if base URL already includes /api/v1, use it as-is, otherwise append
+      const apiUrl = this.baseUrl.includes('/api/v1') 
+        ? `${this.baseUrl}/payments/${paymentId}/verify`
+        : `${this.baseUrl}/api/v1/payments/${paymentId}/verify`
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           ...this.getHeaders(),
@@ -170,9 +190,38 @@ export class BagsAPI {
   private getHeaders(): Record<string, string> {
     const headers: Record<string, string> = {};
     if (this.apiKey) {
-      headers['Authorization'] = `Bearer ${this.apiKey}`;
+      headers['x-api-key'] = this.apiKey;
     }
     return headers;
   }
+}
+
+const BAGS_API_BASE = process.env.NEXT_PUBLIC_BAGS_API_BASE_URL!;
+const BAGS_API_KEY = process.env.BAGS_API_KEY!;
+
+export async function getBagsQuote(payload: {
+  tokenIn: string;
+  amount: number;
+  outToken: string;
+}) {
+  // Construct full URL - if base URL already includes /api/v1, use it as-is, otherwise append
+  const apiUrl = BAGS_API_BASE.includes('/api/v1') 
+    ? `${BAGS_API_BASE}/quote`
+    : `${BAGS_API_BASE}/api/v1/quote`
+
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': BAGS_API_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Bags quote failed`);
+  }
+
+  return res.json();
 }
 

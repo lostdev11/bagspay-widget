@@ -14,6 +14,15 @@ Most merchants don't want to rebuild their stack to accept new assets. A widget 
 - Routing/quotes are handled via **Bags API**
 - Receipts are transparent and verifiable
 
+## Hackathon Focus
+For the Bags Hackathon, BagsPay is intentionally scoped to:
+- Payments-only (no inventory or bookkeeping logic inside the widget)
+- Fully non-custodial
+- Powered by the Bags API
+- Designed as a reusable primitive that GotSOL and other apps can embed
+
+Inventory, bookkeeping, and merchant dashboards remain owned by GotSOL and react to payment events emitted by the widget.
+
 ## How it works (high level)
 1. Merchant configures the widget (merchant wallet or `.sol`, amount, currency)
 2. Customer selects a token and receives a quote (via Bags API)
@@ -25,6 +34,8 @@ Most merchants don't want to rebuild their stack to accept new assets. A widget 
 - Widget UI states: idle → quote → confirm → processing → success/error
 - Receipt page with transaction signature and details
 - SNS `.sol` resolution (mock or real, depending on environment)
+- Live Bags API integration for swap quoting
+- Execution mocked for demo safety
 
 ## 🏗️ Project Structure
 
@@ -82,7 +93,7 @@ Create `.env.local` files in each app/package:
 
 **packages/widget/.env.local:**
 ```env
-NEXT_PUBLIC_BAGS_API_URL=https://api.bags.fun
+NEXT_PUBLIC_BAGS_API_BASE_URL=https://public-api-v2.bags.fm/api/v1
 NEXT_PUBLIC_WIDGET_URL=http://localhost:3001
 BAGS_API_KEY=your-api-key-here
 NEXT_PUBLIC_SOLANA_NETWORK=mainnet-beta
@@ -90,9 +101,12 @@ NEXT_PUBLIC_SOLANA_NETWORK=mainnet-beta
 
 **apps/demo/.env.local:**
 ```env
-NEXT_PUBLIC_BAGS_API_URL=https://api.bags.fun
+NEXT_PUBLIC_BAGS_API_BASE_URL=https://public-api-v2.bags.fm/api/v1
+BAGS_API_KEY=your-api-key-here
 NEXT_PUBLIC_SOLANA_NETWORK=mainnet-beta
 ```
+
+> **Note**: Get your API key from [dev.bags.fm](https://dev.bags.fm). The API uses `x-api-key` header for authentication. Rate limit: 1,000 requests per hour per user.
 
 > **Note**: For the hackathon demo, mock APIs are used. Replace with real Bags API endpoints when deploying to production.
 

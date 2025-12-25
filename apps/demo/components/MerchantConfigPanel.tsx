@@ -17,11 +17,14 @@ export default function MerchantConfigPanel({ onConfigChange }: MerchantConfigPa
   const [amount, setAmount] = useState('100')
   const [currency, setCurrency] = useState<'USDC' | 'SOL'>('USDC')
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
+  const [checkoutUrl, setCheckoutUrl] = useState('')
 
-  // Generate checkout URL based on current config
-  const checkoutUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/checkout?merchant=${encodeURIComponent(merchant)}&amount=${encodeURIComponent(amount)}&currency=${encodeURIComponent(currency)}&theme=${encodeURIComponent(theme)}`
-    : ''
+  // Generate checkout URL based on current config (only on client)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setCheckoutUrl(`${window.location.origin}/checkout?merchant=${encodeURIComponent(merchant)}&amount=${encodeURIComponent(amount)}&currency=${encodeURIComponent(currency)}&theme=${encodeURIComponent(theme)}`)
+    }
+  }, [merchant, amount, currency, theme])
 
   useEffect(() => {
     const numAmount = parseFloat(amount) || 0
