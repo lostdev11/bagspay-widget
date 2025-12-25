@@ -38,7 +38,7 @@ export default function QRCodeBlock({ url, size = 200 }: QRCodeBlockProps) {
         {isLocalhost && (
           <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
             <p className="text-sm text-yellow-800 dark:text-yellow-200">
-              ⚠️ Localhost URLs won't work when scanned from other devices. Use your network IP or deploy to test QR codes.
+              ⚠️ Localhost URLs won&apos;t work when scanned from other devices. Use your network IP or deploy to test QR codes.
             </p>
           </div>
         )}
