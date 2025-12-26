@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useWallet, useConnection } from '@solana/wallet-adapter-react'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import { PublicKey, Transaction, SystemProgram } from '@solana/web3.js'
@@ -32,17 +32,7 @@ export default function CheckoutWidget({
   const [isProcessing, setIsProcessing] = useState(false)
   const [bagsAPI] = useState(() => new BagsAPI())
 
-  useEffect(() => {
-    loadTokens()
-  }, [])
-
-  useEffect(() => {
-    if (selectedToken && amount > 0) {
-      calculateTokenAmount()
-    }
-  }, [selectedToken, amount])
-
-  const loadTokens = async () => {
+  const loadTokens = useCallback(async () => {
     try {
       setIsLoading(true)
       const availableTokens = await bagsAPI.getTokens()
@@ -56,9 +46,13 @@ export default function CheckoutWidget({
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [bagsAPI, onError])
 
-  const calculateTokenAmount = async () => {
+  useEffect(() => {
+    loadTokens()
+  }, [loadTokens])
+
+  const calculateTokenAmount = useCallback(async () => {
     if (!selectedToken) return
 
     try {
@@ -75,7 +69,13 @@ export default function CheckoutWidget({
       // Use fallback calculation
       setTokenAmount(amount / 0.01)
     }
-  }
+  }, [selectedToken, amount, bagsAPI])
+
+  useEffect(() => {
+    if (selectedToken && amount > 0) {
+      calculateTokenAmount()
+    }
+  }, [selectedToken, amount, calculateTokenAmount])
 
   const handlePayment = async () => {
     if (!publicKey || !selectedToken) {
@@ -187,7 +187,7 @@ export default function CheckoutWidget({
               {selectedToken && tokenAmount > 0 && (
                 <div className="bg-gray-50 rounded-md p-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">You'll pay:</span>
+                    <span className="text-sm text-gray-600">You&apos;ll pay:</span>
                     <span className="text-lg font-semibold text-gray-900">
                       {tokenAmount.toFixed(6)} {selectedToken.symbol}
                     </span>
