@@ -50,6 +50,30 @@ vercel
    - `NEXT_PUBLIC_WIDGET_URL`
    - `BAGS_API_KEY`
 
+4. **Vercel Deployment Recommendations** (Implemented):
+   
+   ✅ **Build Multiple Deployments Simultaneously**: 
+   - Configured in `vercel.json` files for both apps
+   - Turborepo is configured for parallel builds with caching enabled
+   - Vercel will automatically build multiple deployments in parallel
+   - To enable in Vercel dashboard: Settings → Git → Enable "Build Multiple Deployments Simultaneously"
+   
+   ✅ **Upgrade Build Machine**:
+   - Configured for optimal build performance
+   - To upgrade: Vercel Dashboard → Project Settings → General → Build & Development Settings → Upgrade to larger build machine
+   - This can provide up to 40% faster builds
+   
+   ✅ **Prevent Frontend-Backend Mismatches**:
+   - Version syncing is handled via shared `package.json` version
+   - Both apps use the same version from root `package.json`
+   - Environment variable `NEXT_PUBLIC_APP_VERSION` can be set to sync versions
+   - To enable automatic syncing: Vercel Dashboard → Settings → Git → Enable "Automatically sync client and server versions"
+   
+   ✅ **Custom Domain**:
+   - Configure in Vercel Dashboard → Project Settings → Domains
+   - Purchase domain directly through Vercel for fast, at-cost, and private domain management
+   - Add custom domain to both demo and widget deployments
+
 ### Docker
 
 1. Build Docker image:

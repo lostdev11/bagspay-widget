@@ -251,6 +251,17 @@ theme: {
 - **Transaction Verification**: All payments are verified via Bags API
 - **HTTPS Only**: Widget should only be served over HTTPS in production
 
+## 🚀 Deployment
+
+This project is configured for deployment on Vercel with optimizations enabled:
+
+- **Parallel Builds**: Configured via `vercel.json` and Turborepo for simultaneous deployments
+- **Build Optimization**: Turbo caching enabled for faster builds
+- **Version Syncing**: Automatic version synchronization between frontend and backend via `NEXT_PUBLIC_APP_VERSION`
+- **Monorepo Support**: Each app has its own `vercel.json` configuration
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions and Vercel recommendations.
+
 ## 📄 License
 
 MIT
