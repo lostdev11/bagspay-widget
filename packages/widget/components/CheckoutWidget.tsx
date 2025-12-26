@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useWallet, useConnection } from '@solana/wallet-adapter-react'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import { PublicKey, Transaction, SystemProgram } from '@solana/web3.js'
@@ -71,21 +71,7 @@ export default function CheckoutWidget({
     resolveMerchant()
   }, [merchant, connection, onError])
 
-  // Load tokens when merchant is resolved
-  useEffect(() => {
-    if (merchantAddress && state === 'idle') {
-      loadTokens()
-    }
-  }, [merchantAddress])
-
-  // Auto-quote when wallet is connected and token is selected
-  useEffect(() => {
-    if (connected && publicKey && selectedToken && merchantAddress && state === 'idle') {
-      getQuote()
-    }
-  }, [connected, publicKey, selectedToken, merchantAddress])
-
-  const loadTokens = async () => {
+  const loadTokens = useCallback(async () => {
     try {
       const availableTokens = await bagsAPI.getTokens()
       
@@ -120,9 +106,16 @@ export default function CheckoutWidget({
       setErrorMessage('Failed to load tokens')
       onError?.(error as Error)
     }
-  }
+  }, [bagsAPI, currency, onError])
 
-  const getQuote = async () => {
+  // Load tokens when merchant is resolved
+  useEffect(() => {
+    if (merchantAddress && state === 'idle') {
+      loadTokens()
+    }
+  }, [merchantAddress, state, loadTokens])
+
+  const getQuote = useCallback(async () => {
     if (!selectedToken || !merchantAddress) return
 
     setState('quoting')
@@ -144,7 +137,14 @@ export default function CheckoutWidget({
       setQuoteError(error instanceof Error ? error.message : 'Failed to get quote')
       onError?.(error as Error)
     }
-  }
+  }, [selectedToken, merchantAddress, amount, bagsAPI, onError])
+
+  // Auto-quote when wallet is connected and token is selected
+  useEffect(() => {
+    if (connected && publicKey && selectedToken && merchantAddress && state === 'idle') {
+      getQuote()
+    }
+  }, [connected, publicKey, selectedToken, merchantAddress, state, getQuote])
 
   const handlePayment = async () => {
     if (!publicKey || !selectedToken || !merchantAddress) {
@@ -372,7 +372,7 @@ export default function CheckoutWidget({
               {state === 'confirm' && tokenAmount > 0 && (
                 <div className={`${cardBg} rounded-xl p-4 border-2 ${borderColor} shadow-sm mb-4`}>
                   <div className="flex justify-between items-center">
-                    <span className={`text-sm font-medium ${textSecondary}`}>You'll pay:</span>
+                    <span className={`text-sm font-medium ${textSecondary}`}>You&apos;ll pay:</span>
                     <span className={`text-xl font-bold ${textColor}`}>
                       {tokenAmount.toFixed(6)} <span className="text-indigo-600 dark:text-indigo-400">{selectedToken?.symbol}</span>
                     </span>
