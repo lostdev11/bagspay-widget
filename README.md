@@ -1,6 +1,18 @@
 # BagsPay — Embeddable Checkout Widget (Bags Hackathon)
 
+## Live Demo
+https://bagspay-widget-demo.vercel.app/
+
+> Hackathon Demo — payments flow is live; some execution paths may be simulated for demo stability.
+
 BagsPay is an embeddable, non-custodial checkout widget powered by the **Bags API** that enables merchants to accept payments using **any Bags memecoin**. It is built as a standalone demo for the Bags Hackathon and is designed to integrate cleanly into existing commerce platforms (e.g., GotSOL) without exposing private codebases.
+
+## What's Included in This Demo
+- Embeddable checkout widget (payments-only scope)
+- Live demo site deployed via Vercel
+- Quote routing via Bags API (live or mocked depending on environment)
+- Receipt / success state with transaction metadata
+- Designed to integrate cleanly into GotSOL Paylinks and merchant sites
 
 ## What this is
 - **Checkout Widget**: drop-in UI for merchant sites/apps
@@ -31,7 +43,6 @@ Inventory, bookkeeping, and merchant dashboards remain owned by GotSOL and react
 ## Features (MVP)
 - Merchant config panel (amount, merchant, currency, theme)
 - Checkout link generation + QR code
-- Widget UI states: idle → quote → confirm → processing → success/error
 - Receipt page with transaction signature and details
 - SNS `.sol` resolution (mock or real, depending on environment)
 - Live Bags API integration for swap quoting
@@ -106,13 +117,18 @@ BAGS_API_KEY=your-api-key-here
 NEXT_PUBLIC_SOLANA_NETWORK=mainnet-beta
 ```
 
-> **Note**: Get your API key from [dev.bags.fm](https://dev.bags.fm). The API uses `x-api-key` header for authentication. Rate limit: 1,000 requests per hour per user.
+> **Note**: Get your API key from [dev.bags.fm](https://dev.bags.fm). Rate limit: 1,000 requests per hour per user.
+
+> **Security Note**: `BAGS_API_KEY` is server-side only and is never exposed to the client.  
+> Client-side calls proxy through the demo app where required.
 
 > **Note**: For the hackathon demo, mock APIs are used. Replace with real Bags API endpoints when deploying to production.
 
 ## 🔌 Integration
 
-### Option 1: Embed Script (Recommended)
+### Option 1: Embed Script (Planned)
+
+> The embed script interface is defined as part of the widget spec and will be finalized post-hackathon.
 
 Add the embed script to your HTML:
 
@@ -246,3 +262,5 @@ This is a hackathon project for the Bags Hackathon. Contributions welcome!
 ---
 
 Built with ❤️ for the Bags Hackathon
+
+Status: Hackathon MVP / Demo. Some flows may be mocked while APIs and partner configurations are finalized.
