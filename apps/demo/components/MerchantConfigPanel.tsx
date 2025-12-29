@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import QRCodeBlock from './QRCodeBlock'
 
 interface MerchantConfigPanelProps {
@@ -19,6 +19,14 @@ export default function MerchantConfigPanel({ onConfigChange }: MerchantConfigPa
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [checkoutUrl, setCheckoutUrl] = useState('')
 
+  // Debounced config for onConfigChange
+  const [debouncedConfig, setDebouncedConfig] = useState({
+    merchant: 'merchant.sol',
+    amount: 100,
+    currency: 'USDC' as 'USDC' | 'SOL',
+    theme: 'light' as 'light' | 'dark',
+  })
+
   // Generate checkout URL based on current config (only on client)
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -26,17 +34,27 @@ export default function MerchantConfigPanel({ onConfigChange }: MerchantConfigPa
     }
   }, [merchant, amount, currency, theme])
 
+  // Debounce config changes to reduce re-renders
   useEffect(() => {
     const numAmount = parseFloat(amount) || 0
-    if (onConfigChange) {
-      onConfigChange({
+    const timer = setTimeout(() => {
+      setDebouncedConfig({
         merchant,
         amount: numAmount,
         currency,
         theme,
       })
+    }, 150) // 150ms debounce
+
+    return () => clearTimeout(timer)
+  }, [merchant, amount, currency, theme])
+
+  // Call onConfigChange only when debounced config changes
+  useEffect(() => {
+    if (onConfigChange) {
+      onConfigChange(debouncedConfig)
     }
-  }, [merchant, amount, currency, theme, onConfigChange])
+  }, [debouncedConfig, onConfigChange])
 
   return (
     <div className="space-y-6">

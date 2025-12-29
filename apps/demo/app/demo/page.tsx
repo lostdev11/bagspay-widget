@@ -11,7 +11,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import MerchantConfigPanel from '../../components/MerchantConfigPanel'
 import CheckoutWidget from '../../components/CheckoutWidget'
@@ -25,24 +25,24 @@ export default function DemoPage() {
     theme: 'light' as 'light' | 'dark',
   })
 
-  const handleConfigChange = (newConfig: {
+  const handleConfigChange = useCallback((newConfig: {
     merchant: string
     amount: number
     currency: 'USDC' | 'SOL'
     theme: 'light' | 'dark'
   }) => {
     setConfig(newConfig)
-  }
+  }, [])
 
-  const handlePaymentSuccess = (receiptId: string, txSignature: string) => {
+  const handlePaymentSuccess = useCallback((receiptId: string, txSignature: string) => {
     console.log('Payment successful:', { receiptId, txSignature })
     // Receipt page will be loaded via CheckoutWidget redirect
-  }
+  }, [])
 
-  const handlePaymentError = (error: Error) => {
+  const handlePaymentError = useCallback((error: Error) => {
     console.error('Payment error:', error)
     // Error is handled in CheckoutWidget
-  }
+  }, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">

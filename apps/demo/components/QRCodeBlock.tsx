@@ -1,13 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, memo } from 'react'
 
 interface QRCodeBlockProps {
   url: string
   size?: number
 }
 
-export default function QRCodeBlock({ url, size = 200 }: QRCodeBlockProps) {
+const QRCodeBlock = memo(function QRCodeBlock({ url, size = 200 }: QRCodeBlockProps) {
   const [copied, setCopied] = useState(false)
   const [imageError, setImageError] = useState(false)
 
@@ -80,5 +80,6 @@ export default function QRCodeBlock({ url, size = 200 }: QRCodeBlockProps) {
       </div>
     </div>
   )
-}
+})
 
+export default QRCodeBlock

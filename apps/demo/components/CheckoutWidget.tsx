@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react'
 import { mockGetQuote, executePayment, getTokens } from '../lib/mockBagsApi'
 import { resolveAddress, isValidSolDomain } from '../lib/sns'
 import type { BagsPayWidgetProps, BagsToken, QuoteResponse } from '../lib/types'
@@ -59,7 +59,7 @@ async function getQuote(params: {
   }
 }
 
-export default function CheckoutWidget({
+const CheckoutWidget = memo(function CheckoutWidget({
   merchant,
   amount,
   currency = 'USDC',
@@ -76,7 +76,9 @@ export default function CheckoutWidget({
   const [quoteError, setQuoteError] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  // Resolve merchant address
+  // Resolve merchant address with debouncing
+  const resolveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
   useEffect(() => {
     const resolveMerchant = async () => {
       if (!merchant) {
@@ -88,6 +90,7 @@ export default function CheckoutWidget({
       try {
         const resolved = await resolveAddress(merchant)
         setMerchantAddress(resolved)
+        setState('idle')
       } catch (error) {
         console.error('Failed to resolve merchant:', error)
         setState('error')
@@ -96,7 +99,21 @@ export default function CheckoutWidget({
       }
     }
 
-    resolveMerchant()
+    // Clear previous timeout
+    if (resolveTimeoutRef.current) {
+      clearTimeout(resolveTimeoutRef.current)
+    }
+
+    // Debounce merchant resolution
+    resolveTimeoutRef.current = setTimeout(() => {
+      resolveMerchant()
+    }, 300)
+
+    return () => {
+      if (resolveTimeoutRef.current) {
+        clearTimeout(resolveTimeoutRef.current)
+      }
+    }
   }, [merchant, onError])
 
   // Load tokens from API or mock
@@ -151,36 +168,53 @@ export default function CheckoutWidget({
     loadTokens()
   }, [])
 
-  // Auto-quote when token is selected
+  // Memoize quote fetching function
+  const fetchQuote = useCallback(async () => {
+    if (!selectedToken || !merchantAddress) return
+
+    setState('quoting')
+    setQuoteError(null)
+
+    try {
+      const quoteData = await getQuote({
+        tokenIn: selectedToken.address,
+        amount,
+        currency,
+      })
+      setQuote(quoteData)
+      setState('confirm')
+    } catch (error) {
+      console.error('Failed to get quote:', error)
+      setState('error')
+      setQuoteError(error instanceof Error ? error.message : 'Failed to get quote')
+      onError?.(error as Error)
+    }
+  }, [selectedToken, merchantAddress, amount, currency, onError])
+
+  // Auto-quote when token is selected (debounced)
+  const quoteTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
   useEffect(() => {
     if (selectedToken && merchantAddress && state === 'idle') {
-      const fetchQuote = async () => {
-        if (!selectedToken) return
+      // Clear previous timeout
+      if (quoteTimeoutRef.current) {
+        clearTimeout(quoteTimeoutRef.current)
+      }
 
-        setState('quoting')
-        setQuoteError(null)
+      // Debounce quote fetching
+      quoteTimeoutRef.current = setTimeout(() => {
+        fetchQuote()
+      }, 200)
 
-        try {
-          const quoteData = await getQuote({
-            tokenIn: selectedToken.address,
-            amount,
-            currency,
-          })
-          setQuote(quoteData)
-          setState('confirm')
-        } catch (error) {
-          console.error('Failed to get quote:', error)
-          setState('error')
-          setQuoteError(error instanceof Error ? error.message : 'Failed to get quote')
-          onError?.(error as Error)
+      return () => {
+        if (quoteTimeoutRef.current) {
+          clearTimeout(quoteTimeoutRef.current)
         }
       }
-      fetchQuote()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedToken, merchantAddress, amount, currency, state])
+  }, [selectedToken, merchantAddress, state, fetchQuote])
 
-  const getQuoteData = async () => {
+  const getQuoteData = useCallback(async () => {
     if (!selectedToken) return
 
     setState('quoting')
@@ -200,9 +234,9 @@ export default function CheckoutWidget({
       setQuoteError(error instanceof Error ? error.message : 'Failed to get quote')
       onError?.(error as Error)
     }
-  }
+  }, [selectedToken, amount, currency, onError])
 
-  const handlePayment = async () => {
+  const handlePayment = useCallback(async () => {
     if (!selectedToken || !merchantAddress) {
       setState('error')
       setErrorMessage('Missing payment details')
@@ -240,9 +274,9 @@ export default function CheckoutWidget({
       setErrorMessage(errorMsg)
       onError?.(error instanceof Error ? error : new Error(errorMsg))
     }
-  }
+  }, [selectedToken, merchantAddress, amount, currency, orderId, onSuccess, onError])
 
-  const reset = () => {
+  const reset = useCallback(() => {
     setState('idle')
     setQuote(null)
     setErrorMessage(null)
@@ -250,15 +284,22 @@ export default function CheckoutWidget({
     if (selectedToken && merchantAddress) {
       getQuoteData()
     }
-  }
+  }, [selectedToken, merchantAddress, getQuoteData])
 
-  const isDark = theme === 'dark'
-  const bgColor = isDark ? 'bg-gray-800' : 'bg-white'
-  const textColor = isDark ? 'text-gray-100' : 'text-gray-900'
-  const textSecondary = isDark ? 'text-gray-400' : 'text-gray-600'
-  const borderColor = isDark ? 'border-gray-700' : 'border-gray-200'
-  const inputBg = isDark ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
-  const cardBg = isDark ? 'bg-gray-700/50' : 'bg-gradient-to-br from-indigo-50 to-purple-50'
+  // Memoize theme-based styles to avoid recalculation
+  const styles = useMemo(() => {
+    const isDark = theme === 'dark'
+    return {
+      bgColor: isDark ? 'bg-gray-800' : 'bg-white',
+      textColor: isDark ? 'text-gray-100' : 'text-gray-900',
+      textSecondary: isDark ? 'text-gray-400' : 'text-gray-600',
+      borderColor: isDark ? 'border-gray-700' : 'border-gray-200',
+      inputBg: isDark ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200',
+      cardBg: isDark ? 'bg-gray-700/50' : 'bg-gradient-to-br from-indigo-50 to-purple-50',
+    }
+  }, [theme])
+
+  const { bgColor, textColor, textSecondary, borderColor, inputBg, cardBg } = styles
 
   // Error state
   if (state === 'error') {
@@ -380,7 +421,7 @@ export default function CheckoutWidget({
                   const token = tokens.find(t => t.address === e.target.value)
                   setSelectedToken(token || null)
                   setState('idle')
-                  setTimeout(() => getQuoteData(), 100)
+                  // Quote will be fetched automatically via useEffect
                 }}
                 className={`w-full px-4 py-3 ${inputBg} ${textColor} rounded-xl border-2 ${borderColor} focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 font-medium cursor-pointer`}
               >
@@ -448,4 +489,6 @@ export default function CheckoutWidget({
       </div>
     </div>
   )
-}
+})
+
+export default CheckoutWidget
