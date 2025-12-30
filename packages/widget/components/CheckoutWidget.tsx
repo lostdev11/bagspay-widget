@@ -5,7 +5,9 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import { PublicKey, Transaction, SystemProgram } from '@solana/web3.js'
 import { BagsAPI } from '../../../lib/bagsApi'
-import { resolveAddress, isValidSolDomain } from '../../../lib/sns'
+import { isValidSolDomain } from '../../../lib/sns'
+import { useMerchantResolution } from '../lib/hooks/useMerchantResolution'
+import { useBagsQuote } from '../lib/hooks/useBagsQuote'
 import type { BagsPayWidgetProps, BagsToken, PaymentRequest } from '../../../lib/types'
 
 // USDC and SOL token addresses
@@ -26,14 +28,33 @@ export default function CheckoutWidget({
   const { publicKey, sendTransaction, connected } = useWallet()
   const { connection } = useConnection()
   const [state, setState] = useState<WidgetState>('idle')
-  const [merchantAddress, setMerchantAddress] = useState<PublicKey | null>(null)
   const [selectedToken, setSelectedToken] = useState<BagsToken | null>(null)
   const [tokens, setTokens] = useState<BagsToken[]>([])
-  const [tokenAmount, setTokenAmount] = useState<number>(0)
-  const [quoteError, setQuoteError] = useState<string | null>(null)
   const [txSignature, setTxSignature] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [bagsAPI] = useState(() => new BagsAPI())
+
+  // Use merchant resolution hook
+  const {
+    resolvedAddress: merchantAddress,
+    isResolving: isResolvingMerchant,
+    error: merchantError,
+    retry: retryMerchant,
+  } = useMerchantResolution(merchant, connection)
+
+  // Use quote hook
+  const {
+    tokenAmount,
+    isLoading: isQuoteLoading,
+    error: quoteError,
+    refresh: refreshQuote,
+  } = useBagsQuote({
+    amount,
+    token: selectedToken,
+    currency,
+    merchantAddress,
+    bagsAPI,
+  })
 
   // Get network for explorer link
   const getExplorerUrl = (signature: string) => {
@@ -41,35 +62,30 @@ export default function CheckoutWidget({
     return `https://solscan.io/tx/${signature}?cluster=${network}`
   }
 
-  // Resolve merchant address (handle .sol domains)
+  // Update state based on merchant resolution and quote status
   useEffect(() => {
-    const resolveMerchant = async () => {
-      if (!merchant) {
-        setState('error')
-        setErrorMessage('Merchant address is required')
-        return
-      }
-
+    if (merchantError) {
+      setState('error')
+      setErrorMessage(merchantError)
+      onError?.(new Error(merchantError))
+    } else if (quoteError) {
+      setState('error')
+      setErrorMessage(quoteError)
+      onError?.(new Error(quoteError))
+    } else if (isResolvingMerchant) {
       setState('idle')
-      setQuoteError(null)
-      
-      try {
-        const resolved = await resolveAddress(merchant, connection)
-        if (resolved) {
-          setMerchantAddress(resolved)
-        } else {
-          throw new Error(`Failed to resolve merchant: ${merchant}`)
-        }
-      } catch (error) {
-        console.error('Failed to resolve merchant:', error)
-        setState('error')
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to resolve merchant address')
-        onError?.(error as Error)
-      }
+      setErrorMessage(null)
+    } else if (merchantAddress && isQuoteLoading) {
+      setState('quoting')
+      setErrorMessage(null)
+    } else if (merchantAddress && tokenAmount > 0 && !isQuoteLoading && connected && publicKey) {
+      setState('confirm')
+      setErrorMessage(null)
+    } else if (merchantAddress && !isQuoteLoading) {
+      setState('idle')
+      setErrorMessage(null)
     }
-
-    resolveMerchant()
-  }, [merchant, connection, onError])
+  }, [merchantError, quoteError, isResolvingMerchant, merchantAddress, isQuoteLoading, tokenAmount, connected, publicKey, onError])
 
   const loadTokens = useCallback(async () => {
     try {
@@ -115,36 +131,6 @@ export default function CheckoutWidget({
     }
   }, [merchantAddress, state, loadTokens])
 
-  const getQuote = useCallback(async () => {
-    if (!selectedToken || !merchantAddress) return
-
-    setState('quoting')
-    setQuoteError(null)
-
-    try {
-      const price = await bagsAPI.getTokenPrice(selectedToken.address)
-      
-      if (price <= 0) {
-        throw new Error('Unable to get token price')
-      }
-
-      const amountInTokens = amount / price
-      setTokenAmount(amountInTokens)
-      setState('confirm')
-    } catch (error) {
-      console.error('Failed to get quote:', error)
-      setState('error')
-      setQuoteError(error instanceof Error ? error.message : 'Failed to get quote')
-      onError?.(error as Error)
-    }
-  }, [selectedToken, merchantAddress, amount, bagsAPI, onError])
-
-  // Auto-quote when wallet is connected and token is selected
-  useEffect(() => {
-    if (connected && publicKey && selectedToken && merchantAddress && state === 'idle') {
-      getQuote()
-    }
-  }, [connected, publicKey, selectedToken, merchantAddress, state, getQuote])
 
   const handlePayment = async () => {
     if (!publicKey || !selectedToken || !merchantAddress) {
@@ -219,9 +205,10 @@ export default function CheckoutWidget({
     setState('idle')
     setTxSignature(null)
     setErrorMessage(null)
-    setQuoteError(null)
-    if (selectedToken && merchantAddress) {
-      getQuote()
+    if (merchantError) {
+      retryMerchant()
+    } else if (quoteError) {
+      refreshQuote()
     }
   }
 
@@ -235,7 +222,7 @@ export default function CheckoutWidget({
   const shadowClass = isDark ? 'shadow-2xl shadow-gray-900/50' : 'shadow-2xl'
 
   // Error state
-  if (state === 'error' && !connected) {
+  if (state === 'error') {
     return (
       <div className={`${bgColor} ${shadowClass} rounded-2xl p-8 max-w-md mx-auto border ${borderColor}`}>
         <div className="text-center space-y-4">
@@ -246,13 +233,13 @@ export default function CheckoutWidget({
           </div>
           <div>
             <h3 className={`text-xl font-bold ${textColor} mb-2`}>Error</h3>
-            <p className={textSecondary}>{errorMessage || 'An error occurred'}</p>
+            <p className={textSecondary}>{errorMessage || merchantError || quoteError || 'An error occurred'}</p>
           </div>
           <button
             onClick={reset}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
           >
-            Try Again
+            Retry
           </button>
         </div>
       </div>
@@ -296,13 +283,13 @@ export default function CheckoutWidget({
   }
 
   // Loading/Resolving state
-  if (!merchantAddress || state === 'quoting') {
+  if (isResolvingMerchant || !merchantAddress || isQuoteLoading) {
     return (
       <div className={`${bgColor} ${shadowClass} rounded-2xl p-8 max-w-md mx-auto border ${borderColor}`}>
         <div className="text-center space-y-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
           <p className={textSecondary}>
-            {!merchantAddress ? 'Resolving merchant address...' : 'Getting quote...'}
+            {isResolvingMerchant || !merchantAddress ? 'Resolving merchant address...' : 'Getting quote...'}
           </p>
         </div>
       </div>
@@ -389,10 +376,7 @@ export default function CheckoutWidget({
                   onChange={(e) => {
                     const token = tokens.find(t => t.address === e.target.value)
                     setSelectedToken(token || null)
-                    if (token) {
-                      setState('idle')
-                      setTimeout(() => getQuote(), 100)
-                    }
+                    // Quote will be fetched automatically via useBagsQuote hook
                   }}
                   className={`w-full px-4 py-3 ${inputBg} ${textColor} rounded-xl border-2 ${borderColor} focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 font-medium cursor-pointer`}
                 >
@@ -408,7 +392,7 @@ export default function CheckoutWidget({
                 <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
                   <p className="text-sm text-red-600 dark:text-red-400">{quoteError}</p>
                   <button
-                    onClick={getQuote}
+                    onClick={refreshQuote}
                     className="mt-2 text-sm text-red-700 dark:text-red-300 underline"
                   >
                     Retry quote

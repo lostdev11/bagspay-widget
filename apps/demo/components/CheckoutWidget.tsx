@@ -1,63 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react'
-import { mockGetQuote, executePayment, getTokens } from '../lib/mockBagsApi'
-import { resolveAddress, isValidSolDomain } from '../lib/sns'
+import { useState, useEffect, useCallback, useMemo, memo } from 'react'
+import { executePayment, getTokens } from '../lib/mockBagsApi'
+import { isValidSolDomain } from '../lib/sns'
+import { useMerchantResolution } from '../lib/hooks/useMerchantResolution'
+import { useBagsQuote } from '../lib/hooks/useBagsQuote'
 import type { BagsPayWidgetProps, BagsToken, QuoteResponse } from '../lib/types'
 
 type WidgetState = 'idle' | 'quoting' | 'confirm' | 'processing' | 'success' | 'error'
-
-// Check if live API is configured
-const BAGS_API_BASE = process.env.NEXT_PUBLIC_BAGS_API_BASE_URL
-const USE_MOCK = !BAGS_API_BASE
-
-// Token mint addresses for mapping currency to outToken
-const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
-const SOL_MINT = 'So11111111111111111111111111111111111111112'
-
-/**
- * Get quote using mock or real API based on configuration
- */
-async function getQuote(params: {
-  tokenIn: string;
-  amount: number;
-  currency: 'USDC' | 'SOL';
-}): Promise<QuoteResponse> {
-  if (USE_MOCK) {
-    return await mockGetQuote(params)
-  } else {
-    try {
-      // Map currency to outToken address
-      const outToken = params.currency === 'USDC' ? USDC_MINT : SOL_MINT
-      
-      // Fetch quote from API via proxy route
-      const response = await fetch('/api/bags/quote', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          tokenIn: params.tokenIn,
-          amount: params.amount,
-          outToken,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || `Failed to get quote: ${response.statusText}`)
-      }
-
-      const quote = await response.json()
-      // Type assertion - real API should return QuoteResponse compatible structure
-      return quote as QuoteResponse
-    } catch (error) {
-      console.error('Error fetching quote from API, falling back to mock:', error)
-      // Fallback to mock on error
-      return await mockGetQuote(params)
-    }
-  }
-}
 
 const CheckoutWidget = memo(function CheckoutWidget({
   merchant,
@@ -69,56 +19,58 @@ const CheckoutWidget = memo(function CheckoutWidget({
   onError,
 }: BagsPayWidgetProps) {
   const [state, setState] = useState<WidgetState>('idle')
-  const [merchantAddress, setMerchantAddress] = useState<string | null>(null)
   const [selectedToken, setSelectedToken] = useState<BagsToken | null>(null)
   const [tokens, setTokens] = useState<BagsToken[]>([])
-  const [quote, setQuote] = useState<QuoteResponse | null>(null)
-  const [quoteError, setQuoteError] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  // Resolve merchant address with debouncing
-  const resolveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  
+  // Use merchant resolution hook
+  const {
+    resolvedAddress: merchantAddress,
+    isResolving: isResolvingMerchant,
+    error: merchantError,
+    retry: retryMerchant,
+  } = useMerchantResolution(merchant)
+
+  // Use quote hook
+  const {
+    quote,
+    isLoading: isQuoteLoading,
+    error: quoteError,
+    refresh: refreshQuote,
+  } = useBagsQuote({
+    amount,
+    token: selectedToken,
+    currency,
+    merchantAddress,
+  })
+
+  // Update state based on merchant resolution and quote status
   useEffect(() => {
-    const resolveMerchant = async () => {
-      if (!merchant) {
-        setState('error')
-        setErrorMessage('Merchant address is required')
-        return
-      }
-
-      try {
-        const resolved = await resolveAddress(merchant)
-        setMerchantAddress(resolved)
-        setState('idle')
-      } catch (error) {
-        console.error('Failed to resolve merchant:', error)
-        setState('error')
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to resolve merchant address')
-        onError?.(error as Error)
-      }
+    if (merchantError) {
+      setState('error')
+      setErrorMessage(merchantError)
+      onError?.(new Error(merchantError))
+    } else if (isResolvingMerchant) {
+      setState('idle')
+      setErrorMessage(null)
+    } else if (merchantAddress && isQuoteLoading) {
+      setState('quoting')
+      setErrorMessage(null)
+    } else if (merchantAddress && quote && !isQuoteLoading) {
+      setState('confirm')
+      setErrorMessage(null)
+    } else if (merchantAddress && !isQuoteLoading) {
+      setState('idle')
+      setErrorMessage(null)
     }
-
-    // Clear previous timeout
-    if (resolveTimeoutRef.current) {
-      clearTimeout(resolveTimeoutRef.current)
-    }
-
-    // Debounce merchant resolution
-    resolveTimeoutRef.current = setTimeout(() => {
-      resolveMerchant()
-    }, 300)
-
-    return () => {
-      if (resolveTimeoutRef.current) {
-        clearTimeout(resolveTimeoutRef.current)
-      }
-    }
-  }, [merchant, onError])
+  }, [merchantError, isResolvingMerchant, merchantAddress, isQuoteLoading, quote, onError])
 
   // Load tokens from API or mock
   useEffect(() => {
     const loadTokens = async () => {
+      const BAGS_API_BASE = process.env.NEXT_PUBLIC_BAGS_API_BASE_URL
+      const USE_MOCK = !BAGS_API_BASE
+
       if (USE_MOCK) {
         // Use mock tokens
         const mockTokens = getTokens()
@@ -168,73 +120,6 @@ const CheckoutWidget = memo(function CheckoutWidget({
     loadTokens()
   }, [])
 
-  // Memoize quote fetching function
-  const fetchQuote = useCallback(async () => {
-    if (!selectedToken || !merchantAddress) return
-
-    setState('quoting')
-    setQuoteError(null)
-
-    try {
-      const quoteData = await getQuote({
-        tokenIn: selectedToken.address,
-        amount,
-        currency,
-      })
-      setQuote(quoteData)
-      setState('confirm')
-    } catch (error) {
-      console.error('Failed to get quote:', error)
-      setState('error')
-      setQuoteError(error instanceof Error ? error.message : 'Failed to get quote')
-      onError?.(error as Error)
-    }
-  }, [selectedToken, merchantAddress, amount, currency, onError])
-
-  // Auto-quote when token is selected (debounced)
-  const quoteTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  
-  useEffect(() => {
-    if (selectedToken && merchantAddress && state === 'idle') {
-      // Clear previous timeout
-      if (quoteTimeoutRef.current) {
-        clearTimeout(quoteTimeoutRef.current)
-      }
-
-      // Debounce quote fetching
-      quoteTimeoutRef.current = setTimeout(() => {
-        fetchQuote()
-      }, 200)
-
-      return () => {
-        if (quoteTimeoutRef.current) {
-          clearTimeout(quoteTimeoutRef.current)
-        }
-      }
-    }
-  }, [selectedToken, merchantAddress, state, fetchQuote])
-
-  const getQuoteData = useCallback(async () => {
-    if (!selectedToken) return
-
-    setState('quoting')
-    setQuoteError(null)
-
-    try {
-      const quoteData = await getQuote({
-        tokenIn: selectedToken.address,
-        amount,
-        currency,
-      })
-      setQuote(quoteData)
-      setState('confirm')
-    } catch (error) {
-      console.error('Failed to get quote:', error)
-      setState('error')
-      setQuoteError(error instanceof Error ? error.message : 'Failed to get quote')
-      onError?.(error as Error)
-    }
-  }, [selectedToken, amount, currency, onError])
 
   const handlePayment = useCallback(async () => {
     if (!selectedToken || !merchantAddress) {
@@ -278,13 +163,13 @@ const CheckoutWidget = memo(function CheckoutWidget({
 
   const reset = useCallback(() => {
     setState('idle')
-    setQuote(null)
     setErrorMessage(null)
-    setQuoteError(null)
-    if (selectedToken && merchantAddress) {
-      getQuoteData()
+    if (merchantError) {
+      retryMerchant()
+    } else if (quoteError) {
+      refreshQuote()
     }
-  }, [selectedToken, merchantAddress, getQuoteData])
+  }, [merchantError, quoteError, retryMerchant, refreshQuote])
 
   // Memoize theme-based styles to avoid recalculation
   const styles = useMemo(() => {
@@ -313,13 +198,13 @@ const CheckoutWidget = memo(function CheckoutWidget({
           </div>
           <div>
             <h3 className={`text-xl font-bold ${textColor} mb-2`}>Error</h3>
-            <p className={textSecondary}>{errorMessage || quoteError || 'An error occurred'}</p>
+            <p className={textSecondary}>{errorMessage || merchantError || quoteError || 'An error occurred'}</p>
           </div>
           <button
             onClick={reset}
             className="px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors font-semibold"
           >
-            Try Again
+            Retry
           </button>
         </div>
       </div>
@@ -346,13 +231,13 @@ const CheckoutWidget = memo(function CheckoutWidget({
   }
 
   // Loading/Resolving state
-  if (!merchantAddress || state === 'quoting') {
+  if (isResolvingMerchant || !merchantAddress || isQuoteLoading) {
     return (
       <div className={`${bgColor} shadow-2xl rounded-2xl p-8 max-w-md mx-auto border ${borderColor}`}>
         <div className="text-center space-y-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
           <p className={textSecondary}>
-            {!merchantAddress ? 'Resolving merchant address...' : 'Getting quote...'}
+            {isResolvingMerchant || !merchantAddress ? 'Resolving merchant address...' : 'Getting quote...'}
           </p>
         </div>
       </div>
@@ -420,8 +305,7 @@ const CheckoutWidget = memo(function CheckoutWidget({
                 onChange={(e) => {
                   const token = tokens.find(t => t.address === e.target.value)
                   setSelectedToken(token || null)
-                  setState('idle')
-                  // Quote will be fetched automatically via useEffect
+                  // Quote will be fetched automatically via useBagsQuote hook
                 }}
                 className={`w-full px-4 py-3 ${inputBg} ${textColor} rounded-xl border-2 ${borderColor} focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 font-medium cursor-pointer`}
               >
@@ -462,7 +346,7 @@ const CheckoutWidget = memo(function CheckoutWidget({
               <div className={`p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg`}>
                 <p className={`text-sm text-red-600 dark:text-red-400`}>{quoteError}</p>
                 <button
-                  onClick={getQuoteData}
+                  onClick={refreshQuote}
                   className="mt-2 text-sm text-red-700 dark:text-red-300 underline"
                 >
                   Retry quote
