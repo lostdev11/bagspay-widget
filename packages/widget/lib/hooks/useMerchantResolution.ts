@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Connection, PublicKey } from '@solana/web3.js'
-import { resolveAddress, isValidSolDomain } from '../../../lib/sns'
+import { resolveAddress, isValidSolDomain } from '../sns'
 
 const RESOLUTION_TIMEOUT = 7000 // 7 seconds
 const DEBOUNCE_MS = 400 // 400ms debounce
@@ -208,7 +208,7 @@ export function useMerchantResolution(
         }
       })
     }
-  }, [input, connection, resolveMerchant])
+  }, [input, resolveMerchant])
 
   return {
     resolvedAddress,

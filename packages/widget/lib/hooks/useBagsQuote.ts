@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { PublicKey } from '@solana/web3.js'
-import { BagsAPI } from '../../../lib/bagsApi'
-import type { BagsToken } from '../../../lib/types'
+import { BagsAPI } from '../bagsApi'
+import type { BagsToken } from '../types'
 
 const DEBOUNCE_MS = 300 // 300ms debounce
 

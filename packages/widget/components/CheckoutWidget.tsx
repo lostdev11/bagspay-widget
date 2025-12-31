@@ -4,11 +4,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { useWallet, useConnection } from '@solana/wallet-adapter-react'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import { PublicKey, Transaction, SystemProgram } from '@solana/web3.js'
-import { BagsAPI } from '../../../lib/bagsApi'
-import { isValidSolDomain } from '../../../lib/sns'
+import { BagsAPI } from '../lib/bagsApi'
+import { isValidSolDomain } from '../lib/sns'
 import { useMerchantResolution } from '../lib/hooks/useMerchantResolution'
 import { useBagsQuote } from '../lib/hooks/useBagsQuote'
-import type { BagsPayWidgetProps, BagsToken, PaymentRequest } from '../../../lib/types'
+import type { BagsPayWidgetProps, BagsToken, PaymentRequest } from '../lib/types'
 
 // USDC and SOL token addresses
 const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
