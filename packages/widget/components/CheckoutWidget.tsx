@@ -33,6 +33,11 @@ export default function CheckoutWidget({
   const [txSignature, setTxSignature] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [bagsAPI] = useState(() => new BagsAPI())
+  
+  // Track merchant identity (resolved address) and network for initialization
+  // This is used to determine when to re-initialize vs just refresh quote
+  const [merchantIdentity, setMerchantIdentity] = useState<string | null>(null)
+  const [networkId, setNetworkId] = useState<string | null>(null)
 
   // Use merchant resolution hook
   const {
@@ -62,16 +67,173 @@ export default function CheckoutWidget({
     return `https://solscan.io/tx/${signature}?cluster=${network}`
   }
 
-  // Update state based on merchant resolution and quote status
+  // Get current network identifier
+  const currentNetworkId = connection.rpcEndpoint.includes('mainnet') ? 'mainnet' : 'devnet'
+  const currentMerchantIdentity = merchantAddress?.toString() || null
+
+  /**
+   * INITIALIZATION EFFECT
+   * 
+   * This effect runs ONLY when merchant identity or network changes.
+   * It handles:
+   * - Loading tokens list
+   * - Resetting widget state for new merchant/network
+   * - Setting initial selected token (only if not already selected)
+   * 
+   * Dependencies: merchantIdentity, networkId
+   * Does NOT depend on: amount, currency, theme
+   */
+  useEffect(() => {
+    // Check if merchant identity or network changed
+    const merchantChanged = currentMerchantIdentity !== merchantIdentity
+    const networkChanged = currentNetworkId !== networkId
+
+    if (merchantChanged || networkChanged) {
+      // Update tracked identity/network
+      setMerchantIdentity(currentMerchantIdentity)
+      setNetworkId(currentNetworkId)
+
+      // Reset state for new merchant/network
+      if (merchantChanged) {
+        setState('idle')
+        setSelectedToken(null)
+        setTokens([])
+        setErrorMessage(null)
+      }
+
+      // Load tokens when merchant is resolved
+      if (currentMerchantIdentity) {
+        const loadTokens = async () => {
+          try {
+            const availableTokens = await bagsAPI.getTokens()
+            
+            // Filter or prioritize based on currency preference (for display only, doesn't trigger reload)
+            let filteredTokens = availableTokens
+            if (currency === 'USDC') {
+              const usdcToken = availableTokens.find(t => 
+                t.address === USDC_MINT.toString() || 
+                t.symbol === 'USDC' || 
+                t.symbol === 'USD'
+              )
+              if (usdcToken) {
+                filteredTokens = [usdcToken, ...availableTokens.filter(t => t.address !== usdcToken.address)]
+              }
+            } else if (currency === 'SOL') {
+              const solToken = availableTokens.find(t => 
+                t.address === SOL_MINT.toString() || 
+                t.symbol === 'SOL'
+              )
+              if (solToken) {
+                filteredTokens = [solToken, ...availableTokens.filter(t => t.address !== solToken.address)]
+              }
+            }
+
+            setTokens(filteredTokens)
+            // Only set selected token if not already set (preserve user selection)
+            if (filteredTokens.length > 0 && !selectedToken) {
+              setSelectedToken(filteredTokens[0])
+            }
+          } catch (error) {
+            console.error('Failed to load tokens:', error)
+            setState('error')
+            setErrorMessage('Failed to load tokens')
+            onError?.(error as Error)
+          }
+        }
+        
+        loadTokens()
+      }
+    }
+  }, [currentMerchantIdentity, merchantIdentity, currentNetworkId, networkId, bagsAPI, currency, selectedToken, onError])
+
+  /**
+   * CURRENCY-BASED TOKEN ORDERING EFFECT
+   * 
+   * Reorders tokens based on currency preference without reloading.
+   * Preserves selected token if it still exists in the list.
+   * 
+   * Dependencies: currency (only runs when currency changes)
+   * Does NOT reload tokens or reset selectedToken.
+   * Uses functional updates to avoid dependency on tokens array.
+   */
+  useEffect(() => {
+    setTokens((currentTokens) => {
+      if (currentTokens.length === 0) return currentTokens
+
+      // Reorder tokens based on currency preference
+      let reorderedTokens = [...currentTokens]
+      if (currency === 'USDC') {
+        const usdcToken = currentTokens.find(t => 
+          t.address === USDC_MINT.toString() || 
+          t.symbol === 'USDC' || 
+          t.symbol === 'USD'
+        )
+        if (usdcToken) {
+          reorderedTokens = [usdcToken, ...currentTokens.filter(t => t.address !== usdcToken.address)]
+        }
+      } else if (currency === 'SOL') {
+        const solToken = currentTokens.find(t => 
+          t.address === SOL_MINT.toString() || 
+          t.symbol === 'SOL'
+        )
+        if (solToken) {
+          reorderedTokens = [solToken, ...currentTokens.filter(t => t.address !== solToken.address)]
+        }
+      }
+
+      // Only update if order actually changed
+      const orderChanged = reorderedTokens.some((token, index) => 
+        currentTokens[index]?.address !== token.address
+      )
+      
+      if (orderChanged) {
+        // Preserve selected token if it still exists
+        setSelectedToken((currentSelected) => {
+          if (currentSelected && !reorderedTokens.find(t => t.address === currentSelected.address)) {
+            // Selected token no longer in list, keep first token selected
+            if (reorderedTokens.length > 0) {
+              return reorderedTokens[0]
+            }
+          }
+          return currentSelected
+        })
+        return reorderedTokens
+      }
+      
+      return currentTokens
+    })
+  }, [currency]) // Only depend on currency
+
+  /**
+   * QUOTE REFRESH EFFECT
+   * 
+   * This effect handles quote updates when amount/currency/token changes.
+   * It does NOT reset widget state or clear selected token.
+   * 
+   * Dependencies: amount, currency, selectedToken, merchantAddress
+   * The actual quote fetching is handled by useBagsQuote hook with debouncing.
+   */
+  // Quote refresh is handled by useBagsQuote hook - no additional effect needed
+
+  /**
+   * STATE UPDATE EFFECT
+   * 
+   * Updates widget state based on merchant resolution and quote status.
+   * This is separate from initialization to allow smooth quote updates.
+   */
   useEffect(() => {
     if (merchantError) {
       setState('error')
       setErrorMessage(merchantError)
       onError?.(new Error(merchantError))
     } else if (quoteError) {
-      setState('error')
-      setErrorMessage(quoteError)
-      onError?.(new Error(quoteError))
+      // Quote errors should not set global error state, just show in UI
+      // Only set error state if we don't have a valid quote and can't proceed
+      if (!merchantAddress) {
+        setState('error')
+        setErrorMessage(quoteError)
+        onError?.(new Error(quoteError))
+      }
     } else if (isResolvingMerchant) {
       setState('idle')
       setErrorMessage(null)
@@ -86,50 +248,6 @@ export default function CheckoutWidget({
       setErrorMessage(null)
     }
   }, [merchantError, quoteError, isResolvingMerchant, merchantAddress, isQuoteLoading, tokenAmount, connected, publicKey, onError])
-
-  const loadTokens = useCallback(async () => {
-    try {
-      const availableTokens = await bagsAPI.getTokens()
-      
-      // Filter or prioritize based on currency preference
-      let filteredTokens = availableTokens
-      if (currency === 'USDC') {
-        const usdcToken = availableTokens.find(t => 
-          t.address === USDC_MINT.toString() || 
-          t.symbol === 'USDC' || 
-          t.symbol === 'USD'
-        )
-        if (usdcToken) {
-          filteredTokens = [usdcToken, ...availableTokens.filter(t => t.address !== usdcToken.address)]
-        }
-      } else if (currency === 'SOL') {
-        const solToken = availableTokens.find(t => 
-          t.address === SOL_MINT.toString() || 
-          t.symbol === 'SOL'
-        )
-        if (solToken) {
-          filteredTokens = [solToken, ...availableTokens.filter(t => t.address !== solToken.address)]
-        }
-      }
-
-      setTokens(filteredTokens)
-      if (filteredTokens.length > 0) {
-        setSelectedToken(filteredTokens[0])
-      }
-    } catch (error) {
-      console.error('Failed to load tokens:', error)
-      setState('error')
-      setErrorMessage('Failed to load tokens')
-      onError?.(error as Error)
-    }
-  }, [bagsAPI, currency, onError])
-
-  // Load tokens when merchant is resolved
-  useEffect(() => {
-    if (merchantAddress && state === 'idle') {
-      loadTokens()
-    }
-  }, [merchantAddress, state, loadTokens])
 
 
   const handlePayment = async () => {

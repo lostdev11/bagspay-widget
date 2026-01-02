@@ -22,6 +22,10 @@ const CheckoutWidget = memo(function CheckoutWidget({
   const [selectedToken, setSelectedToken] = useState<BagsToken | null>(null)
   const [tokens, setTokens] = useState<BagsToken[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  
+  // Track merchant identity for initialization
+  // This is used to determine when to re-initialize vs just refresh quote
+  const [merchantIdentity, setMerchantIdentity] = useState<string | null>(null)
 
   // Use merchant resolution hook
   const {
@@ -44,7 +48,112 @@ const CheckoutWidget = memo(function CheckoutWidget({
     merchantAddress,
   })
 
-  // Update state based on merchant resolution and quote status
+  /**
+   * INITIALIZATION EFFECT
+   * 
+   * This effect runs ONLY when merchant identity changes.
+   * It handles:
+   * - Loading tokens list
+   * - Resetting widget state for new merchant
+   * - Setting initial selected token (only if not already selected)
+   * 
+   * Dependencies: merchantIdentity (derived from merchantAddress)
+   * Does NOT depend on: amount, currency, theme
+   */
+  useEffect(() => {
+    const currentMerchantIdentity = merchantAddress || null
+    
+    // Check if merchant identity changed
+    if (currentMerchantIdentity !== merchantIdentity) {
+      // Update tracked identity
+      setMerchantIdentity(currentMerchantIdentity)
+
+      // Reset state for new merchant (only if we had a previous merchant)
+      if (merchantIdentity !== null) {
+        setState('idle')
+        setSelectedToken(null)
+        setTokens([])
+        setErrorMessage(null)
+      }
+
+      // Load tokens when merchant is resolved
+      if (currentMerchantIdentity) {
+        const loadTokens = async () => {
+          const BAGS_API_BASE = process.env.NEXT_PUBLIC_BAGS_API_BASE_URL
+          const USE_MOCK = !BAGS_API_BASE
+
+          if (USE_MOCK) {
+            // Use mock tokens
+            const mockTokens = getTokens()
+            setTokens(mockTokens)
+            // Only set selected token if not already set (preserve user selection)
+            if (mockTokens.length > 0 && !selectedToken) {
+              setSelectedToken(mockTokens[0])
+            }
+          } else {
+            // Fetch tokens from live API via proxy route
+            try {
+              const response = await fetch('/api/bags/tokens', {
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+              })
+              
+              if (!response.ok) {
+                throw new Error(`Failed to fetch tokens: ${response.statusText}`)
+              }
+              
+              const data = await response.json()
+              const apiTokens: BagsToken[] = data.tokens || []
+              
+              if (apiTokens.length > 0) {
+                setTokens(apiTokens)
+                // Only set selected token if not already set (preserve user selection)
+                if (!selectedToken) {
+                  setSelectedToken(apiTokens[0])
+                }
+              } else {
+                // Fallback to mock if API returns no tokens
+                const mockTokens = getTokens()
+                setTokens(mockTokens)
+                if (mockTokens.length > 0 && !selectedToken) {
+                  setSelectedToken(mockTokens[0])
+                }
+              }
+            } catch (error) {
+              console.error('Error fetching tokens from API, falling back to mock:', error)
+              // Fallback to mock tokens on error
+              const mockTokens = getTokens()
+              setTokens(mockTokens)
+              if (mockTokens.length > 0 && !selectedToken) {
+                setSelectedToken(mockTokens[0])
+              }
+            }
+          }
+        }
+        
+        loadTokens()
+      }
+    }
+  }, [merchantAddress, merchantIdentity, selectedToken])
+
+  /**
+   * QUOTE REFRESH EFFECT
+   * 
+   * This effect handles quote updates when amount/currency/token changes.
+   * It does NOT reset widget state or clear selected token.
+   * 
+   * Dependencies: amount, currency, selectedToken, merchantAddress
+   * The actual quote fetching is handled by useBagsQuote hook with debouncing.
+   */
+  // Quote refresh is handled by useBagsQuote hook - no additional effect needed
+
+  /**
+   * STATE UPDATE EFFECT
+   * 
+   * Updates widget state based on merchant resolution and quote status.
+   * This is separate from initialization to allow smooth quote updates.
+   */
   useEffect(() => {
     if (merchantError) {
       setState('error')
@@ -64,61 +173,6 @@ const CheckoutWidget = memo(function CheckoutWidget({
       setErrorMessage(null)
     }
   }, [merchantError, isResolvingMerchant, merchantAddress, isQuoteLoading, quote, onError])
-
-  // Load tokens from API or mock
-  useEffect(() => {
-    const loadTokens = async () => {
-      const BAGS_API_BASE = process.env.NEXT_PUBLIC_BAGS_API_BASE_URL
-      const USE_MOCK = !BAGS_API_BASE
-
-      if (USE_MOCK) {
-        // Use mock tokens
-        const mockTokens = getTokens()
-        setTokens(mockTokens)
-        if (mockTokens.length > 0) {
-          setSelectedToken(mockTokens[0])
-        }
-      } else {
-        // Fetch tokens from live API via proxy route
-        try {
-          const response = await fetch('/api/bags/tokens', {
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          })
-          
-          if (!response.ok) {
-            throw new Error(`Failed to fetch tokens: ${response.statusText}`)
-          }
-          
-          const data = await response.json()
-          const apiTokens: BagsToken[] = data.tokens || []
-          
-          if (apiTokens.length > 0) {
-            setTokens(apiTokens)
-            setSelectedToken(apiTokens[0])
-          } else {
-            // Fallback to mock if API returns no tokens
-            const mockTokens = getTokens()
-            setTokens(mockTokens)
-            if (mockTokens.length > 0) {
-              setSelectedToken(mockTokens[0])
-            }
-          }
-        } catch (error) {
-          console.error('Error fetching tokens from API, falling back to mock:', error)
-          // Fallback to mock tokens on error
-          const mockTokens = getTokens()
-          setTokens(mockTokens)
-          if (mockTokens.length > 0) {
-            setSelectedToken(mockTokens[0])
-          }
-        }
-      }
-    }
-    
-    loadTokens()
-  }, [])
 
 
   const handlePayment = useCallback(async () => {
