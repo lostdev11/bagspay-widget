@@ -1,30 +1,33 @@
-import type { Config } from 'tailwindcss'
+import type { Config } from "tailwindcss";
 
 const config: Config = {
   content: [
-    './pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./apps/**/*.{js,ts,jsx,tsx,mdx}",
+    "./packages/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          200: '#bae6fd',
-          300: '#7dd3fc',
-          400: '#38bdf8',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
-          800: '#075985',
-          900: '#0c4a6e',
+        gotsol: {
+          mint: "rgb(var(--gotsol-mint) / <alpha-value>)",
+          lavender: "rgb(var(--gotsol-lavender) / <alpha-value>)",
+          aqua: "rgb(var(--gotsol-aqua) / <alpha-value>)",
+          black: "rgb(var(--gotsol-black) / <alpha-value>)",
+          white: "rgb(var(--gotsol-white) / <alpha-value>)",
+        },
+        brand: {
+          primary: "rgb(var(--brand-primary) / <alpha-value>)",
+          secondary: "rgb(var(--brand-secondary) / <alpha-value>)",
+          tertiary: "rgb(var(--brand-tertiary) / <alpha-value>)",
         },
       },
     },
   },
   plugins: [],
-}
-export default config
+};
+
+export default config;
 

@@ -6,16 +6,34 @@
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 255, 255, 255;
   --background-end-rgb: 255, 255, 255;
+
+  /* GotSOL palette - RGB values for opacity support */
+  --gotsol-mint: 137 248 203;
+  --gotsol-lavender: 218 192 255;
+  --gotsol-aqua: 165 218 224;
+  --gotsol-black: 0 0 0;
+  --gotsol-white: 255 255 255;
+
+  /* Brand colors (default to GotSOL palette) */
+  --brand-primary: var(--gotsol-mint);
+  --brand-secondary: var(--gotsol-lavender);
+  --brand-tertiary: var(--gotsol-aqua);
 }
 
 body {
   color: rgb(var(--foreground-rgb));
   background: linear-gradient(
       to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+      var(--gotsol-aqua),
+      var(--gotsol-mint)
+    );
+}
+
+/* Optional: theme class you can toggle */
+.gotsol-theme {
+  --brand-primary: var(--gotsol-mint);
+  --brand-secondary: var(--gotsol-lavender);
+  --brand-tertiary: var(--gotsol-aqua);
 }
 
 @layer utilities {
