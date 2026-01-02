@@ -220,6 +220,7 @@ export default function CheckoutWidget({
    * 
    * Updates widget state based on merchant resolution and quote status.
    * This is separate from initialization to allow smooth quote updates.
+   * When quote is loading, preserve current state instead of switching to 'quoting'.
    */
   useEffect(() => {
     if (merchantError) {
@@ -238,16 +239,23 @@ export default function CheckoutWidget({
       setState('idle')
       setErrorMessage(null)
     } else if (merchantAddress && isQuoteLoading) {
-      setState('quoting')
+      // Don't change state when quote is loading - preserve current state for smooth updates
+      // Only set to 'quoting' if we're in initial state (no tokenAmount yet)
+      if (tokenAmount === 0 && state === 'idle') {
+        setState('quoting')
+      }
       setErrorMessage(null)
     } else if (merchantAddress && tokenAmount > 0 && !isQuoteLoading && connected && publicKey) {
       setState('confirm')
       setErrorMessage(null)
     } else if (merchantAddress && !isQuoteLoading) {
-      setState('idle')
+      // Only set to idle if we don't have a valid quote and aren't already in a terminal state
+      if (state !== 'success' && state !== 'error' && state !== 'processing') {
+        setState('idle')
+      }
       setErrorMessage(null)
     }
-  }, [merchantError, quoteError, isResolvingMerchant, merchantAddress, isQuoteLoading, tokenAmount, connected, publicKey, onError])
+  }, [merchantError, quoteError, isResolvingMerchant, merchantAddress, isQuoteLoading, tokenAmount, connected, publicKey, onError, state])
 
 
   const handlePayment = async () => {
@@ -400,14 +408,15 @@ export default function CheckoutWidget({
     )
   }
 
-  // Loading/Resolving state
-  if (isResolvingMerchant || !merchantAddress || isQuoteLoading) {
+  // Loading/Resolving state - only show full loading for initial merchant resolution
+  // Don't show full loading for quote updates - let the widget stay visible
+  if (isResolvingMerchant || !merchantAddress) {
     return (
       <div className={`${bgColor} ${shadowClass} rounded-2xl p-8 max-w-md mx-auto border ${borderColor}`}>
         <div className="text-center space-y-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
           <p className={textSecondary}>
-            {isResolvingMerchant || !merchantAddress ? 'Resolving merchant address...' : 'Getting quote...'}
+            Resolving merchant address...
           </p>
         </div>
       </div>
@@ -474,13 +483,27 @@ export default function CheckoutWidget({
             </div>
           ) : (
             <div className="space-y-4">
-              {state === 'confirm' && tokenAmount > 0 && (
+              {(state === 'confirm' || isQuoteLoading) && (tokenAmount > 0 || isQuoteLoading) && (
                 <div className={`${cardBg} rounded-xl p-4 border-2 ${borderColor} shadow-sm mb-4`}>
                   <div className="flex justify-between items-center">
                     <span className={`text-sm font-medium ${textSecondary}`}>You&apos;ll pay:</span>
-                    <span className={`text-xl font-bold ${textColor}`}>
-                      {tokenAmount.toFixed(6)} <span className="text-indigo-600 dark:text-indigo-400">{selectedToken?.symbol}</span>
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      {isQuoteLoading && tokenAmount === 0 ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                          <span className={`text-sm ${textSecondary}`}>Calculating...</span>
+                        </div>
+                      ) : (
+                        <>
+                          <span className={`text-xl font-bold ${textColor} ${isQuoteLoading ? 'opacity-60' : ''}`}>
+                            {tokenAmount.toFixed(6)} <span className="text-indigo-600 dark:text-indigo-400">{selectedToken?.symbol}</span>
+                          </span>
+                          {isQuoteLoading && (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -521,14 +544,14 @@ export default function CheckoutWidget({
               {state === 'confirm' && (
                 <button
                   onClick={handlePayment}
-                  disabled={!selectedToken}
+                  disabled={!selectedToken || isQuoteLoading}
                   className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 px-6 rounded-xl font-semibold hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none"
                 >
                   <span className="flex items-center justify-center">
                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    Confirm Payment
+                    {isQuoteLoading ? 'Updating quote...' : 'Confirm Payment'}
                   </span>
                 </button>
               )}

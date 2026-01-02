@@ -153,6 +153,7 @@ const CheckoutWidget = memo(function CheckoutWidget({
    * 
    * Updates widget state based on merchant resolution and quote status.
    * This is separate from initialization to allow smooth quote updates.
+   * When quote is loading, preserve current state instead of switching to 'quoting'.
    */
   useEffect(() => {
     if (merchantError) {
@@ -163,16 +164,23 @@ const CheckoutWidget = memo(function CheckoutWidget({
       setState('idle')
       setErrorMessage(null)
     } else if (merchantAddress && isQuoteLoading) {
-      setState('quoting')
+      // Don't change state when quote is loading - preserve current state for smooth updates
+      // Only set to 'quoting' if we're in initial state (no quote yet)
+      if (!quote && state === 'idle') {
+        setState('quoting')
+      }
       setErrorMessage(null)
     } else if (merchantAddress && quote && !isQuoteLoading) {
       setState('confirm')
       setErrorMessage(null)
     } else if (merchantAddress && !isQuoteLoading) {
-      setState('idle')
+      // Only set to idle if we don't have a valid quote and aren't already in a terminal state
+      if (state !== 'success' && state !== 'error' && state !== 'processing') {
+        setState('idle')
+      }
       setErrorMessage(null)
     }
-  }, [merchantError, isResolvingMerchant, merchantAddress, isQuoteLoading, quote, onError])
+  }, [merchantError, isResolvingMerchant, merchantAddress, isQuoteLoading, quote, onError, state])
 
 
   const handlePayment = useCallback(async () => {
@@ -284,14 +292,15 @@ const CheckoutWidget = memo(function CheckoutWidget({
     )
   }
 
-  // Loading/Resolving state
-  if (isResolvingMerchant || !merchantAddress || isQuoteLoading) {
+  // Loading/Resolving state - only show full loading for initial merchant resolution
+  // Don't show full loading for quote updates - let the widget stay visible
+  if (isResolvingMerchant || !merchantAddress) {
     return (
       <div className={`${bgColor} shadow-2xl rounded-2xl p-8 max-w-md mx-auto border ${borderColor}`}>
         <div className="text-center space-y-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
           <p className={textSecondary}>
-            {isResolvingMerchant || !merchantAddress ? 'Resolving merchant address...' : 'Getting quote...'}
+            Resolving merchant address...
           </p>
         </div>
       </div>
@@ -371,28 +380,44 @@ const CheckoutWidget = memo(function CheckoutWidget({
               </select>
             </div>
 
-            {quote && state === 'confirm' && (
+            {(quote || isQuoteLoading) && (state === 'confirm' || isQuoteLoading) && (
               <div className={`${cardBg} rounded-xl p-4 border-2 ${borderColor} shadow-sm space-y-3`}>
                 <div className="flex justify-between items-center">
                   <span className={`text-sm font-medium ${textSecondary}`}>You&apos;ll pay:</span>
-                  <span className={`text-xl font-bold ${textColor}`}>
-                    {quote.amountIn.toFixed(6)} <span className="text-indigo-600 dark:text-indigo-400">{selectedToken?.symbol}</span>
-                  </span>
+                  <div className="flex items-center space-x-2">
+                    {isQuoteLoading && !quote ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                        <span className={`text-sm ${textSecondary}`}>Calculating...</span>
+                      </div>
+                    ) : quote ? (
+                      <>
+                        <span className={`text-xl font-bold ${textColor} ${isQuoteLoading ? 'opacity-60' : ''}`}>
+                          {quote.amountIn.toFixed(6)} <span className="text-indigo-600 dark:text-indigo-400">{selectedToken?.symbol}</span>
+                        </span>
+                        {isQuoteLoading && (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                        )}
+                      </>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="border-t ${borderColor} pt-3 space-y-2 text-xs">
-                  <div className="flex justify-between">
-                    <span className={textSecondary}>Slippage:</span>
-                    <span className={textColor}>{quote.slippage.toFixed(2)}%</span>
+                {quote && (
+                  <div className={`border-t ${borderColor} pt-3 space-y-2 text-xs ${isQuoteLoading ? 'opacity-60' : ''}`}>
+                    <div className="flex justify-between">
+                      <span className={textSecondary}>Slippage:</span>
+                      <span className={textColor}>{quote.slippage.toFixed(2)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className={textSecondary}>Price Impact:</span>
+                      <span className={textColor}>{quote.priceImpact.toFixed(2)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className={textSecondary}>Fee:</span>
+                      <span className={textColor}>${quote.fee.toFixed(4)}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className={textSecondary}>Price Impact:</span>
-                    <span className={textColor}>{quote.priceImpact.toFixed(2)}%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className={textSecondary}>Fee:</span>
-                    <span className={textColor}>${quote.fee.toFixed(4)}</span>
-                  </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -411,14 +436,14 @@ const CheckoutWidget = memo(function CheckoutWidget({
             {state === 'confirm' && (
               <button
                 onClick={handlePayment}
-                disabled={!selectedToken || !quote}
+                disabled={!selectedToken || !quote || isQuoteLoading}
                 className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 px-6 rounded-xl font-semibold hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none"
               >
                 <span className="flex items-center justify-center">
                   <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  Confirm Payment
+                  {isQuoteLoading ? 'Updating quote...' : 'Confirm Payment'}
                 </span>
               </button>
             )}
