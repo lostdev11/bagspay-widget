@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useWallet, useConnection } from '@solana/wallet-adapter-react'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
 import { PublicKey, Transaction, SystemProgram } from '@solana/web3.js'
@@ -30,6 +30,12 @@ export default function CheckoutWidget({
   const [tokenAmount, setTokenAmount] = useState<number>(0)
   const [isLoading, setIsLoading] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isQuoteLoading, setIsQuoteLoading] = useState(false)
+
+  // Prevent stale async updates when amount changes quickly
+  const quoteReqIdRef = useRef(0)
+  const quoteDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const [bagsAPI] = useState(() => new BagsAPI())
 
   const loadTokens = useCallback(async () => {
@@ -55,25 +61,45 @@ export default function CheckoutWidget({
   const calculateTokenAmount = useCallback(async () => {
     if (!selectedToken) return
 
+    const reqId = ++quoteReqIdRef.current
+    setIsQuoteLoading(true)
+
     try {
       const price = await bagsAPI.getTokenPrice(selectedToken.address)
+
+      // Ignore stale responses
+      if (reqId !== quoteReqIdRef.current) return
+
       if (price > 0) {
-        const amountInTokens = amount / price
-        setTokenAmount(amountInTokens)
+        setTokenAmount(amount / price)
       } else {
-        // Fallback calculation if price API fails
-        setTokenAmount(amount / 0.01) // Placeholder price
+        setTokenAmount(amount / 0.01) // fallback
       }
     } catch (error) {
+      // Ignore stale responses
+      if (reqId !== quoteReqIdRef.current) return
+
       console.error('Failed to calculate token amount:', error)
-      // Use fallback calculation
       setTokenAmount(amount / 0.01)
+    } finally {
+      // Ignore stale responses
+      if (reqId !== quoteReqIdRef.current) return
+      setIsQuoteLoading(false)
     }
   }, [selectedToken, amount, bagsAPI])
 
   useEffect(() => {
-    if (selectedToken && amount > 0) {
+    if (!selectedToken || amount <= 0) return
+
+    // debounce: don't spam API while merchant is typing
+    if (quoteDebounceRef.current) clearTimeout(quoteDebounceRef.current)
+
+    quoteDebounceRef.current = setTimeout(() => {
       calculateTokenAmount()
+    }, 300)
+
+    return () => {
+      if (quoteDebounceRef.current) clearTimeout(quoteDebounceRef.current)
     }
   }, [selectedToken, amount, calculateTokenAmount])
 

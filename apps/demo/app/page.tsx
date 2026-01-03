@@ -30,7 +30,7 @@ export default function Home() {
           </div>
           
           <h1 className="text-6xl md:text-7xl font-bold text-gray-900 dark:text-white mb-4">
-            <span className="gradient-text">BagsPay</span>
+            <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">BagsPay</span>
           </h1>
           
           <p className="text-2xl md:text-3xl text-gray-600 dark:text-gray-300 mb-8">
